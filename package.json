@@ -1,0 +1,24 @@
+{
+  "name": "tcgdex-api",
+  "version": "1.0.0",
+  "description": "REST API for TCGDex — serves Pokémon TCG card and price history data",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "sync-cards": "node src/syncCards.js",
+    "backfill": "node src/backfillPrices.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@tcgdex/sdk": "^2.7.1",
+    "7zip-bin": "^5.2.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "node-7z": "^3.0.0",
+    "node-cron": "^4.2.1",
+    "pg": "^8.20.0"
+  }
+}
