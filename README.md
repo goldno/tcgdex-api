@@ -26,6 +26,19 @@ A REST API that serves Pokémon TCG card data and TCGPlayer price history. Power
 
 ---
 
+## Database
+
+A PostgreSQL database is hosted on [Railway](https://railway.app) and connected to the API.
+
+**Tables:**
+
+| Table | Purpose |
+|-------|---------|
+| `tracked_cards` | Stores every high-rarity card that has been discovered — TCGPlayer product ID, set info, collector number, rarity, image URL, and TCGDex ID. Populated and kept up-to-date by the weekly `syncCards` job. |
+| `price_snapshots` | Stores daily TCGPlayer market price snapshots for each tracked card (market, low, mid, and high prices per sub-type). Populated by the daily `priceSync` job. Rows are unique on `(product_id, snapshot_date, sub_type_name)`. |
+
+---
+
 ## Data Sources
 
 | Source | Used for |
