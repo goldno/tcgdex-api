@@ -7,6 +7,8 @@ require('dotenv').config();
 const db = require('./db');
 
 const TCGCSV_BASE = 'https://tcgcsv.com/tcgplayer/3';
+const FETCH_OPTS  = { headers: { 'User-Agent': 'tcgdex-api/1.0' } };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function syncPrices() {
   const today = new Date().toISOString().split('T')[0];
@@ -29,7 +31,8 @@ async function syncPrices() {
   let skipped = 0;
 
   for (const groupId of groupIds) {
-    const res = await fetch(`${TCGCSV_BASE}/${groupId}/prices`);
+    await sleep(100);
+    const res = await fetch(`${TCGCSV_BASE}/${groupId}/prices`, FETCH_OPTS);
     if (!res.ok) {
       console.log(`[priceSync] Failed for group ${groupId} — HTTP ${res.status}`);
       continue;

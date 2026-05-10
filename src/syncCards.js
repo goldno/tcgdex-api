@@ -10,6 +10,8 @@ const { Query } = require('@tcgdex/sdk');
 
 const tcgdex      = new TCGdex('en');
 const TCGCSV_BASE = 'https://tcgcsv.com/tcgplayer/3';
+const FETCH_OPTS  = { headers: { 'User-Agent': 'tcgdex-api/1.0' } };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Date from which we start tracking sets — SV era launched early 2023
 const TRACK_FROM = new Date('2023-01-01');
@@ -44,7 +46,7 @@ function parseCardNumber(product) {
 async function syncCards() {
   console.log('[syncCards] Fetching set list from TCGCSV...');
 
-  const groupsRes = await fetch(`${TCGCSV_BASE}/groups`);
+  const groupsRes = await fetch(`${TCGCSV_BASE}/groups`, FETCH_OPTS);
   if (!groupsRes.ok) {
     console.error(`[syncCards] Failed to fetch groups — HTTP ${groupsRes.status}`);
     return;
@@ -59,7 +61,8 @@ async function syncCards() {
   let grandTotal = 0;
 
   for (const set of sets) {
-    const res = await fetch(`${TCGCSV_BASE}/${set.groupId}/products`);
+    await sleep(100);
+    const res = await fetch(`${TCGCSV_BASE}/${set.groupId}/products`, FETCH_OPTS);
     if (!res.ok) {
       console.log(`  SKIP "${set.name}" — HTTP ${res.status}`);
       continue;
