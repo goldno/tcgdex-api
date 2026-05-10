@@ -6,6 +6,9 @@ const { extractFull } = require('node-7z');
 const { path7za }     = require('7zip-bin');
 const db = require('./db');
 
+// Ensure the 7zip binary is executable (Railway containers strip execute bits)
+try { fs.chmodSync(path7za, 0o755); } catch (_) {}
+
 const ARCHIVE_BASE = 'https://tcgcsv.com/archive/tcgplayer';
 const CATEGORY_ID  = 3;
 const FETCH_OPTS   = { headers: { 'User-Agent': 'tcgdex-api/1.0' } };
