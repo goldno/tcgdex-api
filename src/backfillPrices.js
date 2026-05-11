@@ -106,10 +106,18 @@ async function backfill() {
   if (fromArg) {
     start = new Date(fromArg);
   } else {
-    // Default: day after the latest snapshot already in the DB
-    const { rows: latestRows } = await db.query(
-      `SELECT MAX(snapshot_date)::text AS last_date FROM price_snapshots`
-    );
+    // Default: day after the earliest per-group max snapshot date.
+    // Uses MIN across groups so that newly added groups (with no history)
+    // pull us back to the beginning rather than skipping them.
+    const { rows: latestRows } = await db.query(`
+      SELECT MIN(COALESCE(max_date, '2024-02-07'))::text AS last_date
+      FROM (
+        SELECT tc.group_id, MAX(ps.snapshot_date) AS max_date
+        FROM tracked_cards tc
+        LEFT JOIN price_snapshots ps USING (product_id)
+        GROUP BY tc.group_id
+      ) sub
+    `);
     const lastDate = latestRows[0].last_date ?? '2024-02-07';
     start = new Date(lastDate);
     start.setUTCDate(start.getUTCDate() + 1);
