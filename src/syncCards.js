@@ -10,19 +10,26 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Rarity keyword sets per era — matched as case-insensitive substrings against
 // the TCGPlayer rarity field (e.g. "Rare Holo EX" matches 'EX', "Rare Ultra" matches 'Ultra')
-const XY_RARITIES   = ['EX', 'BREAK', 'Full Art', 'Ultra'];
-const SM_RARITIES   = ['GX', 'Full Art', 'Shining', 'Prism', 'Ultra'];
-const SWSH_RARITIES = ['VMAX', 'VSTAR', 'Full Art', 'Ultra'];
+const XY_RARITIES = ['EX', 'BREAK', 'Full Art', 'Ultra'];
+const SM_RARITIES = ['GX', 'Full Art', 'Shining', 'Prism', 'Ultra'];
+
+// SWSH: rarity can't distinguish regular V from Full Art V (both "Ultra Rare", both within set count).
+// Match VMAX/VSTAR by name, Full Art variants by URL containing "full-art"
+// (covers Full Art V, Alt Arts within set count, Trainer Full Arts),
+// and aboveSetCount for Rainbow Rares and Gold cards above the printed total.
+const SWSH_SET = { nameContains: ['VMAX', 'VSTAR'], urlContains: ['full-art'], aboveSetCount: true };
 
 // Explicit set configs keyed by TCGCSV group ID.
 //
-// includeAll: true        — track every product in the set
-// requireMarketPrice: true — (used with includeAll) only track if currently priced on TCGPlayer
-// rarities: [...]         — track if rarity field contains any keyword (case-insensitive)
-// aboveSetCount: true     — track if collector number exceeds set total
+// includeAll: true         — track every product in the set
+// minMarketPrice: N        — (used with includeAll) only track if current market price >= N
+// rarities: [...]          — track if rarity field contains any keyword (case-insensitive)
+// nameContains: [...]      — track if product name contains any keyword (case-insensitive)
+// urlContains: [...]       — track if TCGPlayer URL contains any keyword (e.g. 'full-art')
+// aboveSetCount: true      — track if collector number exceeds set total
 const SET_CONFIGS = {
   // ── XY Era ────────────────────────────────────────────────────────────────
-  1451:  { name: 'XY Promos',                              includeAll: true, requireMarketPrice: true },
+  1451:  { name: 'XY Promos',                              includeAll: true, minMarketPrice: 5 },
   1387:  { name: 'XY Base Set',                            rarities: XY_RARITIES, aboveSetCount: true },
   1464:  { name: 'XY - Flashfire',                         rarities: XY_RARITIES, aboveSetCount: true },
   1481:  { name: 'XY - Furious Fists',                     rarities: XY_RARITIES, aboveSetCount: true },
@@ -41,9 +48,9 @@ const SET_CONFIGS = {
   1842:  { name: 'XY - Evolutions',                        rarities: [...XY_RARITIES, 'Rare Holo'], aboveSetCount: true },
 
   // ── Sun & Moon Era ────────────────────────────────────────────────────────
-  1861:  { name: 'SM Promos',                              includeAll: true, requireMarketPrice: true },
+  1861:  { name: 'SM Promos',                              includeAll: true, minMarketPrice: 5 },
   1919:  { name: 'SM - Guardians Rising',                  rarities: SM_RARITIES, aboveSetCount: true },
-  1938:  { name: 'Alternate Art Promos',                   includeAll: true, requireMarketPrice: true },
+  1938:  { name: 'Alternate Art Promos',                   includeAll: true, minMarketPrice: 5 },
   1957:  { name: 'SM - Burning Shadows',                   rarities: SM_RARITIES, aboveSetCount: true },
   2054:  { name: 'Shining Legends',                        rarities: SM_RARITIES, aboveSetCount: true },
   2071:  { name: 'SM - Crimson Invasion',                  rarities: SM_RARITIES, aboveSetCount: true },
@@ -60,34 +67,34 @@ const SET_CONFIGS = {
   2534:  { name: 'SM - Cosmic Eclipse',                    rarities: SM_RARITIES, aboveSetCount: true },
 
   // ── Sword & Shield Era ────────────────────────────────────────────────────
-  2545:  { name: 'SWSH: Sword & Shield Promo Cards',       includeAll: true, requireMarketPrice: true },
-  2585:  { name: 'SWSH01: Sword & Shield Base Set',        rarities: SWSH_RARITIES, aboveSetCount: true },
-  2626:  { name: 'SWSH02: Rebel Clash',                    rarities: SWSH_RARITIES, aboveSetCount: true },
-  2675:  { name: 'SWSH03: Darkness Ablaze',                rarities: SWSH_RARITIES, aboveSetCount: true },
-  2685:  { name: "Champion's Path",                        rarities: SWSH_RARITIES, aboveSetCount: true },
-  2701:  { name: 'SWSH04: Vivid Voltage',                  rarities: SWSH_RARITIES, aboveSetCount: true },
-  2754:  { name: 'Shining Fates',                          rarities: SWSH_RARITIES, aboveSetCount: true },
-  2781:  { name: 'Shining Fates: Shiny Vault',             includeAll: true },
-  2807:  { name: 'SWSH06: Chilling Reign',                 rarities: SWSH_RARITIES, aboveSetCount: true },
-  2848:  { name: 'SWSH07: Evolving Skies',                 rarities: SWSH_RARITIES, aboveSetCount: true },
-  2867:  { name: 'Celebrations',                           rarities: SWSH_RARITIES, aboveSetCount: true },
-  2931:  { name: 'Celebrations: Classic Collection',       includeAll: true },
-  2906:  { name: 'SWSH08: Fusion Strike',                  rarities: SWSH_RARITIES, aboveSetCount: true },
-  2948:  { name: 'SWSH09: Brilliant Stars',                rarities: SWSH_RARITIES, aboveSetCount: true },
-  3020:  { name: 'SWSH09: Brilliant Stars Trainer Gallery',includeAll: true },
-  3040:  { name: 'SWSH10: Astral Radiance',                rarities: SWSH_RARITIES, aboveSetCount: true },
-  3068:  { name: 'SWSH10: Astral Radiance Trainer Gallery',includeAll: true },
-  3064:  { name: 'Pokemon GO',                             rarities: SWSH_RARITIES, aboveSetCount: true },
-  3118:  { name: 'SWSH11: Lost Origin',                    rarities: SWSH_RARITIES, aboveSetCount: true },
-  3172:  { name: 'SWSH11: Lost Origin Trainer Gallery',    includeAll: true },
-  3170:  { name: 'SWSH12: Silver Tempest',                 rarities: SWSH_RARITIES, aboveSetCount: true },
-  17674: { name: 'SWSH12: Silver Tempest Trainer Gallery', includeAll: true },
-  17688: { name: 'SWSH: Crown Zenith',                     rarities: SWSH_RARITIES, aboveSetCount: true },
-  17689: { name: 'SWSH: Crown Zenith Galarian Gallery',    includeAll: true },
+  2545:  { name: 'SWSH: Sword & Shield Promo Cards',        includeAll: true, minMarketPrice: 5 },
+  2585:  { name: 'SWSH01: Sword & Shield Base Set',         ...SWSH_SET },
+  2626:  { name: 'SWSH02: Rebel Clash',                     ...SWSH_SET },
+  2675:  { name: 'SWSH03: Darkness Ablaze',                 ...SWSH_SET },
+  2685:  { name: "Champion's Path",                         ...SWSH_SET },
+  2701:  { name: 'SWSH04: Vivid Voltage',                   ...SWSH_SET },
+  2754:  { name: 'Shining Fates',                           ...SWSH_SET },
+  2781:  { name: 'Shining Fates: Shiny Vault',              includeAll: true },
+  2807:  { name: 'SWSH06: Chilling Reign',                  ...SWSH_SET },
+  2848:  { name: 'SWSH07: Evolving Skies',                  ...SWSH_SET },
+  2867:  { name: 'Celebrations',                            ...SWSH_SET },
+  2931:  { name: 'Celebrations: Classic Collection',        includeAll: true },
+  2906:  { name: 'SWSH08: Fusion Strike',                   ...SWSH_SET },
+  2948:  { name: 'SWSH09: Brilliant Stars',                 ...SWSH_SET },
+  3020:  { name: 'SWSH09: Brilliant Stars Trainer Gallery', includeAll: true },
+  3040:  { name: 'SWSH10: Astral Radiance',                 ...SWSH_SET },
+  3068:  { name: 'SWSH10: Astral Radiance Trainer Gallery', includeAll: true },
+  3064:  { name: 'Pokemon GO',                              ...SWSH_SET },
+  3118:  { name: 'SWSH11: Lost Origin',                     ...SWSH_SET },
+  3172:  { name: 'SWSH11: Lost Origin Trainer Gallery',     includeAll: true },
+  3170:  { name: 'SWSH12: Silver Tempest',                  ...SWSH_SET },
+  17674: { name: 'SWSH12: Silver Tempest Trainer Gallery',  includeAll: true },
+  17688: { name: 'SWSH: Crown Zenith',                      ...SWSH_SET },
+  17689: { name: 'SWSH: Crown Zenith Galarian Gallery',     includeAll: true },
 
   // ── SV & ME Promos ────────────────────────────────────────────────────────
-  22872: { name: 'SV: Scarlet & Violet Promo Cards',       includeAll: true },
-  24451: { name: 'ME: Mega Evolution Promo',               includeAll: true },
+  22872: { name: 'SV: Scarlet & Violet Promo Cards',       includeAll: true, minMarketPrice: 5 },
+  24451: { name: 'ME: Mega Evolution Promo',               includeAll: true, minMarketPrice: 5 },
 };
 
 // Dynamic SV era discovery — picks up new main-set releases automatically.
@@ -140,13 +147,15 @@ function matchesRarity(product, rarities) {
   return rarities.some(r => lower.includes(r.toLowerCase()));
 }
 
-async function getPricedProductIds(groupId) {
+async function getProductIdsAbovePrice(groupId, minPrice) {
   await sleep(100);
   const res = await fetch(`${TCGCSV_BASE}/${groupId}/prices`, FETCH_OPTS);
   if (!res.ok) return new Set();
   const data   = await res.json();
   const prices = data.results ?? data;
-  return new Set(prices.filter(p => p.marketPrice != null).map(p => p.productId));
+  return new Set(
+    prices.filter(p => p.marketPrice != null && p.marketPrice >= minPrice).map(p => p.productId)
+  );
 }
 
 async function upsertCard(product, setName, groupId, collectorNum, setTotal, rarity) {
@@ -202,8 +211,8 @@ async function processSet(groupId, config) {
   const products = (await res.json()).results ?? [];
   let pricedIds  = null;
 
-  if (config.includeAll && config.requireMarketPrice) {
-    pricedIds = await getPricedProductIds(groupId);
+  if (config.includeAll && config.minMarketPrice != null) {
+    pricedIds = await getProductIdsAbovePrice(groupId, config.minMarketPrice);
   }
 
   let count = 0;
@@ -218,8 +227,10 @@ async function processSet(groupId, config) {
     if (config.includeAll) {
       shouldTrack = isCard(product) && (pricedIds ? pricedIds.has(product.productId) : true);
     } else {
-      if (config.rarities && matchesRarity(product, config.rarities))              shouldTrack = true;
-      if (config.aboveSetCount && collectorNum != null && collectorNum > setTotal) shouldTrack = true;
+      if (config.rarities && matchesRarity(product, config.rarities))                                    shouldTrack = true;
+      if (config.nameContains && config.nameContains.some(kw => product.name?.toLowerCase().includes(kw.toLowerCase()))) shouldTrack = true;
+      if (config.urlContains  && config.urlContains.some(kw  => product.url?.toLowerCase().includes(kw.toLowerCase())))  shouldTrack = true;
+      if (config.aboveSetCount && collectorNum != null && collectorNum > setTotal)                        shouldTrack = true;
     }
 
     if (!shouldTrack) continue;
