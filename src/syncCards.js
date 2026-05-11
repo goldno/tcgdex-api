@@ -100,7 +100,7 @@ const SET_CONFIGS = {
 // Dynamic SV era discovery — picks up new main-set releases automatically.
 // Excludes any group already covered by SET_CONFIGS above.
 const DYNAMIC_TRACK_FROM = new Date('2023-01-01');
-const EXCLUDE_PATTERN    = /promo|energ|bundle|mcdonald|academy|classic|trick.or.trade|placement|first.partner|first.battle/i;
+const EXCLUDE_PATTERN    = /promo|energ|bundle|mcdonald|academy|classic|trick.or.trade|placement|first.partner|first.battle|miscellaneous/i;
 const EXPLICIT_IDS       = new Set(Object.keys(SET_CONFIGS).map(Number));
 
 function isMainSvSet(group) {
