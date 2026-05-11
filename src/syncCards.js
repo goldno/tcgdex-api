@@ -1,8 +1,3 @@
-// Discovers high-rarity cards (collector number > set total) across all tracked sets
-// and saves them to the database. Safe to re-run — existing cards are skipped.
-//
-// Runs automatically on a weekly cron via index.js.
-// Can also be run manually: node src/syncCards.js
 require('dotenv').config();
 const db      = require('./db');
 const TCGdex  = require('@tcgdex/sdk').default;
@@ -13,22 +8,103 @@ const TCGCSV_BASE = 'https://tcgcsv.com/tcgplayer/3';
 const FETCH_OPTS  = { headers: { 'User-Agent': 'tcgdex-api/1.0' } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Date from which we start tracking sets — SV era launched early 2023
-const TRACK_FROM = new Date('2023-01-01');
+// Rarity keyword sets per era — matched as case-insensitive substrings against
+// the TCGPlayer rarity field (e.g. "Rare Holo EX" matches 'EX', "Rare Ultra" matches 'Ultra')
+const XY_RARITIES   = ['EX', 'BREAK', 'Full Art', 'Ultra'];
+const SM_RARITIES   = ['GX', 'Full Art', 'Shining', 'Prism', 'Ultra'];
+const SWSH_RARITIES = ['VMAX', 'VSTAR', 'Full Art', 'Ultra'];
 
-// Words in a set name that indicate it is NOT a main expansion set
-const EXCLUDE_PATTERN = /promo|energ|bundle|mcdonald|academy|classic|trick.or.trade|placement|first.partner|first.battle/i;
+// Explicit set configs keyed by TCGCSV group ID.
+//
+// includeAll: true        — track every product in the set
+// requireMarketPrice: true — (used with includeAll) only track if currently priced on TCGPlayer
+// rarities: [...]         — track if rarity field contains any keyword (case-insensitive)
+// aboveSetCount: true     — track if collector number exceeds set total
+const SET_CONFIGS = {
+  // ── XY Era ────────────────────────────────────────────────────────────────
+  1451:  { name: 'XY Promos',                              includeAll: true, requireMarketPrice: true },
+  1387:  { name: 'XY Base Set',                            rarities: XY_RARITIES, aboveSetCount: true },
+  1464:  { name: 'XY - Flashfire',                         rarities: XY_RARITIES, aboveSetCount: true },
+  1481:  { name: 'XY - Furious Fists',                     rarities: XY_RARITIES, aboveSetCount: true },
+  1494:  { name: 'XY - Phantom Forces',                    rarities: XY_RARITIES, aboveSetCount: true },
+  1509:  { name: 'XY - Primal Clash',                      rarities: XY_RARITIES, aboveSetCount: true },
+  1525:  { name: 'Double Crisis',                          rarities: XY_RARITIES, aboveSetCount: true },
+  1534:  { name: 'XY - Roaring Skies',                     rarities: XY_RARITIES, aboveSetCount: true },
+  1576:  { name: 'XY - Ancient Origins',                   rarities: XY_RARITIES, aboveSetCount: true },
+  1661:  { name: 'XY - BREAKthrough',                      rarities: XY_RARITIES, aboveSetCount: true },
+  1701:  { name: 'XY - BREAKpoint',                        rarities: XY_RARITIES, aboveSetCount: true },
+  1728:  { name: 'Generations',                            rarities: XY_RARITIES, aboveSetCount: true },
+  1729:  { name: 'Generations: Radiant Collection',        rarities: XY_RARITIES, aboveSetCount: true },
+  1780:  { name: 'XY - Fates Collide',                     rarities: XY_RARITIES, aboveSetCount: true },
+  1815:  { name: 'XY - Steam Siege',                       rarities: XY_RARITIES, aboveSetCount: true },
+  // Evolutions also includes standard Holofoils ('Rare Holo')
+  1842:  { name: 'XY - Evolutions',                        rarities: [...XY_RARITIES, 'Rare Holo'], aboveSetCount: true },
 
-// Returns true if a TCGCSV group entry is a main expansion set we want to track
-function isMainSet(group) {
-  if (new Date(group.publishedOn) < TRACK_FROM) return false;
-  if (EXCLUDE_PATTERN.test(group.name)) return false;
+  // ── Sun & Moon Era ────────────────────────────────────────────────────────
+  1861:  { name: 'SM Promos',                              includeAll: true, requireMarketPrice: true },
+  1919:  { name: 'SM - Guardians Rising',                  rarities: SM_RARITIES, aboveSetCount: true },
+  1938:  { name: 'Alternate Art Promos',                   includeAll: true, requireMarketPrice: true },
+  1957:  { name: 'SM - Burning Shadows',                   rarities: SM_RARITIES, aboveSetCount: true },
+  2054:  { name: 'Shining Legends',                        rarities: SM_RARITIES, aboveSetCount: true },
+  2071:  { name: 'SM - Crimson Invasion',                  rarities: SM_RARITIES, aboveSetCount: true },
+  2178:  { name: 'SM - Ultra Prism',                       rarities: SM_RARITIES, aboveSetCount: true },
+  2209:  { name: 'SM - Forbidden Light',                   rarities: SM_RARITIES, aboveSetCount: true },
+  2278:  { name: 'SM - Celestial Storm',                   rarities: SM_RARITIES, aboveSetCount: true },
+  2295:  { name: 'Dragon Majesty',                         rarities: SM_RARITIES, aboveSetCount: true },
+  2328:  { name: 'SM - Lost Thunder',                      rarities: SM_RARITIES, aboveSetCount: true },
+  2377:  { name: 'SM - Team Up',                           rarities: SM_RARITIES, aboveSetCount: true },
+  2420:  { name: 'SM - Unbroken Bonds',                    rarities: SM_RARITIES, aboveSetCount: true },
+  2464:  { name: 'SM - Unified Minds',                     rarities: SM_RARITIES, aboveSetCount: true },
+  2480:  { name: 'Hidden Fates',                           rarities: SM_RARITIES, aboveSetCount: true },
+  2594:  { name: 'Hidden Fates: Shiny Vault',              includeAll: true },
+  2534:  { name: 'SM - Cosmic Eclipse',                    rarities: SM_RARITIES, aboveSetCount: true },
+
+  // ── Sword & Shield Era ────────────────────────────────────────────────────
+  2545:  { name: 'SWSH: Sword & Shield Promo Cards',       includeAll: true, requireMarketPrice: true },
+  2585:  { name: 'SWSH01: Sword & Shield Base Set',        rarities: SWSH_RARITIES, aboveSetCount: true },
+  2626:  { name: 'SWSH02: Rebel Clash',                    rarities: SWSH_RARITIES, aboveSetCount: true },
+  2675:  { name: 'SWSH03: Darkness Ablaze',                rarities: SWSH_RARITIES, aboveSetCount: true },
+  2685:  { name: "Champion's Path",                        rarities: SWSH_RARITIES, aboveSetCount: true },
+  2701:  { name: 'SWSH04: Vivid Voltage',                  rarities: SWSH_RARITIES, aboveSetCount: true },
+  2754:  { name: 'Shining Fates',                          rarities: SWSH_RARITIES, aboveSetCount: true },
+  2781:  { name: 'Shining Fates: Shiny Vault',             includeAll: true },
+  2807:  { name: 'SWSH06: Chilling Reign',                 rarities: SWSH_RARITIES, aboveSetCount: true },
+  2848:  { name: 'SWSH07: Evolving Skies',                 rarities: SWSH_RARITIES, aboveSetCount: true },
+  2867:  { name: 'Celebrations',                           rarities: SWSH_RARITIES, aboveSetCount: true },
+  2931:  { name: 'Celebrations: Classic Collection',       includeAll: true },
+  2906:  { name: 'SWSH08: Fusion Strike',                  rarities: SWSH_RARITIES, aboveSetCount: true },
+  2948:  { name: 'SWSH09: Brilliant Stars',                rarities: SWSH_RARITIES, aboveSetCount: true },
+  3020:  { name: 'SWSH09: Brilliant Stars Trainer Gallery',includeAll: true },
+  3040:  { name: 'SWSH10: Astral Radiance',                rarities: SWSH_RARITIES, aboveSetCount: true },
+  3068:  { name: 'SWSH10: Astral Radiance Trainer Gallery',includeAll: true },
+  3064:  { name: 'Pokemon GO',                             rarities: SWSH_RARITIES, aboveSetCount: true },
+  3118:  { name: 'SWSH11: Lost Origin',                    rarities: SWSH_RARITIES, aboveSetCount: true },
+  3172:  { name: 'SWSH11: Lost Origin Trainer Gallery',    includeAll: true },
+  3170:  { name: 'SWSH12: Silver Tempest',                 rarities: SWSH_RARITIES, aboveSetCount: true },
+  17674: { name: 'SWSH12: Silver Tempest Trainer Gallery', includeAll: true },
+  17688: { name: 'SWSH: Crown Zenith',                     rarities: SWSH_RARITIES, aboveSetCount: true },
+  17689: { name: 'SWSH: Crown Zenith Galarian Gallery',    includeAll: true },
+
+  // ── SV & ME Promos ────────────────────────────────────────────────────────
+  22872: { name: 'SV: Scarlet & Violet Promo Cards',       includeAll: true },
+  24451: { name: 'ME: Mega Evolution Promo',               includeAll: true },
+};
+
+// Dynamic SV era discovery — picks up new main-set releases automatically.
+// Excludes any group already covered by SET_CONFIGS above.
+const DYNAMIC_TRACK_FROM = new Date('2023-01-01');
+const EXCLUDE_PATTERN    = /promo|energ|bundle|mcdonald|academy|classic|trick.or.trade|placement|first.partner|first.battle/i;
+const EXPLICIT_IDS       = new Set(Object.keys(SET_CONFIGS).map(Number));
+
+function isMainSvSet(group) {
+  if (new Date(group.publishedOn) < DYNAMIC_TRACK_FROM) return false;
+  if (EXCLUDE_PATTERN.test(group.name))                  return false;
+  if (EXPLICIT_IDS.has(group.groupId))                   return false;
   return true;
 }
 
-// Extracts the collector number and set total from a TCGCSV product.
-// Card numbers are stored in extendedData as { name: "Number", value: "204/165" }
-// and sometimes also appear in the product name as "Card Name - 204/165".
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 function parseCardNumber(product) {
   if (Array.isArray(product.extendedData)) {
     const field = product.extendedData.find(f => f.name === 'Number');
@@ -37,101 +113,158 @@ function parseCardNumber(product) {
       if (m) return { collectorNum: parseInt(m[1]), setTotal: parseInt(m[2]) };
     }
   }
-  // Fall back to parsing "Card Name - 204/165" from the product name
   const m = product.name?.match(/-\s*(\d+)\/(\d+)\s*$/);
   if (m) return { collectorNum: parseInt(m[1]), setTotal: parseInt(m[2]) };
   return null;
 }
 
-async function syncCards() {
-  console.log('[syncCards] Fetching set list from TCGCSV...');
+function getRarity(product) {
+  if (Array.isArray(product.extendedData)) {
+    const field = product.extendedData.find(f => f.name === 'Rarity');
+    return field?.value ?? null;
+  }
+  return null;
+}
 
+// TCGCSV recommendation: presence of 'Number' or 'Rarity' in extendedData
+// distinguishes individual cards from sealed products (packs, boxes, etc.)
+function isCard(product) {
+  if (!Array.isArray(product.extendedData)) return false;
+  return product.extendedData.some(f => f.name === 'Number' || f.name === 'Rarity');
+}
+
+function matchesRarity(product, rarities) {
+  const rarity = getRarity(product);
+  if (!rarity) return false;
+  const lower = rarity.toLowerCase();
+  return rarities.some(r => lower.includes(r.toLowerCase()));
+}
+
+async function getPricedProductIds(groupId) {
+  await sleep(100);
+  const res = await fetch(`${TCGCSV_BASE}/${groupId}/prices`, FETCH_OPTS);
+  if (!res.ok) return new Set();
+  const data   = await res.json();
+  const prices = data.results ?? data;
+  return new Set(prices.filter(p => p.marketPrice != null).map(p => p.productId));
+}
+
+async function upsertCard(product, setName, groupId, collectorNum, setTotal, rarity) {
+  const cleanName = product.name.replace(/-\s*\d+\/\d+\s*$/, '').trim();
+  let tcgdexId = null;
+
+  if (collectorNum != null) {
+    try {
+      const results = await tcgdex.card.list(
+        Query.create()
+          .contains('name', cleanName)
+          .equal('localId', String(collectorNum))
+      );
+      if (results && results.length > 0) tcgdexId = results[0].id;
+    } catch (_) {}
+  }
+
+  await db.query(
+    `INSERT INTO tracked_cards
+       (product_id, group_id, set_name, name, collector_number, set_total, image_url, tcgplayer_url, rarity, tcgdex_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT (product_id) DO UPDATE
+       SET name          = EXCLUDED.name,
+           image_url     = EXCLUDED.image_url,
+           tcgplayer_url = EXCLUDED.tcgplayer_url,
+           rarity        = EXCLUDED.rarity,
+           tcgdex_id     = COALESCE(tracked_cards.tcgdex_id, EXCLUDED.tcgdex_id)`,
+    [
+      product.productId,
+      groupId,
+      setName,
+      product.name,
+      collectorNum ?? null,
+      setTotal     ?? null,
+      product.imageUrl ?? null,
+      product.url      ?? null,
+      rarity,
+      tcgdexId,
+    ]
+  );
+}
+
+// ── Per-set processor ─────────────────────────────────────────────────────────
+
+async function processSet(groupId, config) {
+  await sleep(100);
+  const res = await fetch(`${TCGCSV_BASE}/${groupId}/products`, FETCH_OPTS);
+  if (!res.ok) {
+    console.log(`  SKIP "${config.name}" — HTTP ${res.status}`);
+    return 0;
+  }
+
+  const products = (await res.json()).results ?? [];
+  let pricedIds  = null;
+
+  if (config.includeAll && config.requireMarketPrice) {
+    pricedIds = await getPricedProductIds(groupId);
+  }
+
+  let count = 0;
+
+  for (const product of products) {
+    const parsed       = parseCardNumber(product);
+    const collectorNum = parsed?.collectorNum ?? null;
+    const setTotal     = parsed?.setTotal     ?? null;
+    const rarity       = getRarity(product);
+    let   shouldTrack  = false;
+
+    if (config.includeAll) {
+      shouldTrack = isCard(product) && (pricedIds ? pricedIds.has(product.productId) : true);
+    } else {
+      if (config.rarities && matchesRarity(product, config.rarities))              shouldTrack = true;
+      if (config.aboveSetCount && collectorNum != null && collectorNum > setTotal) shouldTrack = true;
+    }
+
+    if (!shouldTrack) continue;
+
+    await upsertCard(product, config.name, groupId, collectorNum, setTotal, rarity);
+    count++;
+  }
+
+  if (count > 0) console.log(`  "${config.name}": ${count} cards`);
+  return count;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function syncCards() {
+  // 1. Explicitly configured sets (XY / SM / SWSH + promos)
+  console.log('[syncCards] Processing explicit sets...');
+  let explicitTotal = 0;
+  for (const [groupId, config] of Object.entries(SET_CONFIGS)) {
+    explicitTotal += await processSet(Number(groupId), config);
+  }
+  console.log(`[syncCards] ${explicitTotal} cards from explicit sets.`);
+
+  // 2. Dynamic discovery for new SV era main sets
+  console.log('[syncCards] Discovering new SV era sets...');
   const groupsRes = await fetch(`${TCGCSV_BASE}/groups`, FETCH_OPTS);
   if (!groupsRes.ok) {
     console.error(`[syncCards] Failed to fetch groups — HTTP ${groupsRes.status}`);
     return;
   }
 
-  const groupsData = await groupsRes.json();
-  const allGroups  = groupsData.results ?? [];
-  const sets       = allGroups.filter(isMainSet);
+  const sets = (await groupsRes.json()).results?.filter(isMainSvSet) ?? [];
+  console.log(`[syncCards] ${sets.length} new SV sets found.`);
 
-  console.log(`[syncCards] ${sets.length} main sets found since ${TRACK_FROM.toISOString().slice(0, 10)}`);
-
-  let grandTotal = 0;
-
+  let svTotal = 0;
   for (const set of sets) {
-    await sleep(100);
-    const res = await fetch(`${TCGCSV_BASE}/${set.groupId}/products`, FETCH_OPTS);
-    if (!res.ok) {
-      console.log(`  SKIP "${set.name}" — HTTP ${res.status}`);
-      continue;
-    }
-
-    const data     = await res.json();
-    const products = data.results ?? [];
-    let count = 0;
-
-    for (const product of products) {
-      const parsed = parseCardNumber(product);
-      if (!parsed) continue;
-
-      const { collectorNum, setTotal } = parsed;
-
-      // Only track cards whose collector number exceeds the base set total
-      if (collectorNum <= setTotal) continue;
-
-      const rarityField = Array.isArray(product.extendedData)
-        ? product.extendedData.find(f => f.name === 'Rarity')
-        : null;
-      const rarity = rarityField?.value ?? null;
-
-      // Look up TCGDex ID for high-res image
-      const cleanName = product.name.replace(/-\s*\d+\/\d+\s*$/, '').trim();
-      let tcgdexId = null;
-      try {
-        const results = await tcgdex.card.list(
-          Query.create()
-            .contains('name', cleanName)
-            .equal('localId', String(collectorNum))
-        );
-        if (results && results.length > 0) tcgdexId = results[0].id;
-      } catch (_) {}
-
-      await db.query(
-        `INSERT INTO tracked_cards
-           (product_id, group_id, set_name, name, collector_number, set_total, image_url, tcgplayer_url, rarity, tcgdex_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         ON CONFLICT (product_id) DO UPDATE
-           SET name          = EXCLUDED.name,
-               image_url     = EXCLUDED.image_url,
-               tcgplayer_url = EXCLUDED.tcgplayer_url,
-               rarity        = EXCLUDED.rarity,
-               tcgdex_id     = COALESCE(tracked_cards.tcgdex_id, EXCLUDED.tcgdex_id)`,
-        [
-          product.productId,
-          set.groupId,
-          set.name,
-          product.name,
-          collectorNum,
-          setTotal,
-          product.imageUrl ?? null,
-          product.url      ?? null,
-          rarity,
-          tcgdexId,
-        ]
-      );
-      count++;
-    }
-
-    if (count > 0) console.log(`  "${set.name}": ${count} high-rarity cards`);
-    grandTotal += count;
+    svTotal += await processSet(set.groupId, {
+      name:          set.name,
+      aboveSetCount: true,
+    });
   }
-
-  console.log(`[syncCards] Done — ${grandTotal} total cards tracked.`);
+  console.log(`[syncCards] ${svTotal} cards from dynamic SV discovery.`);
+  console.log(`[syncCards] Done — ${explicitTotal + svTotal} total cards tracked.`);
 }
 
-// Allow running directly for initial setup: node src/syncCards.js
 if (require.main === module) {
   require('dotenv').config();
   syncCards()
