@@ -226,11 +226,11 @@ async function processSet(groupId, config) {
 
     if (config.includeAll) {
       shouldTrack = isCard(product) && (pricedIds ? pricedIds.has(product.productId) : true);
-    } else {
+    } else if (isCard(product) && collectorNum != null) {
       if (config.rarities && matchesRarity(product, config.rarities))                                    shouldTrack = true;
       if (config.nameContains && config.nameContains.some(kw => product.name?.toLowerCase().includes(kw.toLowerCase()))) shouldTrack = true;
       if (config.urlContains  && config.urlContains.some(kw  => product.url?.toLowerCase().includes(kw.toLowerCase())))  shouldTrack = true;
-      if (config.aboveSetCount && collectorNum != null && collectorNum > setTotal)                        shouldTrack = true;
+      if (config.aboveSetCount && collectorNum > setTotal)                                                shouldTrack = true;
     }
 
     if (!shouldTrack) continue;
