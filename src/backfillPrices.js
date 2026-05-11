@@ -95,9 +95,11 @@ async function backfill() {
   }
 
   // Parse --from / --to flags, e.g. node backfillPrices.js --from 2024-02-08 --to 2025-01-01
-  const args    = process.argv.slice(2);
-  const fromArg = args[args.indexOf('--from') + 1];
-  const toArg   = args[args.indexOf('--to')   + 1];
+  const args     = process.argv.slice(2);
+  const fromIdx  = args.indexOf('--from');
+  const toIdx    = args.indexOf('--to');
+  const fromArg  = fromIdx !== -1 ? args[fromIdx + 1] : undefined;
+  const toArg    = toIdx   !== -1 ? args[toIdx   + 1] : undefined;
 
   let start, end;
 
