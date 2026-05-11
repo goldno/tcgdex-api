@@ -94,18 +94,32 @@ async function backfill() {
     return;
   }
 
-  // Determine start: day after our latest snapshot (or TCGCSV archive launch date)
-  const { rows: latestRows } = await db.query(
-    `SELECT MAX(snapshot_date)::text AS last_date FROM price_snapshots`
-  );
-  const lastDate = latestRows[0].last_date ?? '2024-02-07';
+  // Parse --from / --to flags, e.g. node backfillPrices.js --from 2024-02-08 --to 2025-01-01
+  const args    = process.argv.slice(2);
+  const fromArg = args[args.indexOf('--from') + 1];
+  const toArg   = args[args.indexOf('--to')   + 1];
 
-  const start = new Date(lastDate);
-  start.setUTCDate(start.getUTCDate() + 1);
+  let start, end;
 
-  // End at yesterday — today's archive may not be published yet
-  const end = new Date();
-  end.setUTCDate(end.getUTCDate() - 1);
+  if (fromArg) {
+    start = new Date(fromArg);
+  } else {
+    // Default: day after the latest snapshot already in the DB
+    const { rows: latestRows } = await db.query(
+      `SELECT MAX(snapshot_date)::text AS last_date FROM price_snapshots`
+    );
+    const lastDate = latestRows[0].last_date ?? '2024-02-07';
+    start = new Date(lastDate);
+    start.setUTCDate(start.getUTCDate() + 1);
+  }
+
+  if (toArg) {
+    end = new Date(toArg);
+  } else {
+    // Default: yesterday (today's archive may not be published yet)
+    end = new Date();
+    end.setUTCDate(end.getUTCDate() - 1);
+  }
 
   if (start > end) {
     console.log('[backfill] Already up to date.');
