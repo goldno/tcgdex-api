@@ -110,11 +110,11 @@ async function backfill() {
     // Uses MIN across groups so that newly added groups (with no history)
     // pull us back to the beginning rather than skipping them.
     const { rows: latestRows } = await db.query(`
-      SELECT MIN(COALESCE(max_date, '2024-02-07'))::text AS last_date
+      SELECT COALESCE(MIN(max_date)::text, '2024-02-07') AS last_date
       FROM (
         SELECT tc.group_id, MAX(ps.snapshot_date) AS max_date
         FROM tracked_cards tc
-        LEFT JOIN price_snapshots ps USING (product_id)
+        JOIN price_snapshots ps USING (product_id)
         GROUP BY tc.group_id
       ) sub
     `);
