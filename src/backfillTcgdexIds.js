@@ -6,13 +6,15 @@ const { Query } = require('@tcgdex/sdk');
 const tcgdex = new TCGdex('en');
 const sleep  = ms => new Promise(r => setTimeout(r, ms));
 
+let debugCount = 0;
+
 async function lookup(cleanName, collectorNum) {
-  // Try unpadded and zero-padded localId (e.g. "74" and "074")
   const localIds = [...new Set([
     String(collectorNum),
     String(collectorNum).padStart(3, '0'),
   ])];
 
+  // 1. Try name + localId combined
   for (const localId of localIds) {
     try {
       const results = await tcgdex.card.list(
@@ -21,9 +23,33 @@ async function lookup(cleanName, collectorNum) {
           .equal('localId', localId)
       );
       if (results && results.length > 0) return results[0].id;
-    } catch (_) {}
+    } catch (err) {
+      if (debugCount < 3) console.error(`  [debug] name+localId error: ${err.message}`);
+    }
     await sleep(150);
   }
+
+  // 2. Fallback: search by name only, match localId in JS
+  try {
+    const results = await tcgdex.card.list(
+      Query.create().contains('name', cleanName)
+    );
+    if (debugCount < 3) {
+      console.log(`  [debug] name-only for "${cleanName}" (#${collectorNum}): ${results?.length ?? 0} results`);
+      debugCount++;
+    }
+    if (results && results.length > 0) {
+      const match = results.find(r =>
+        r.localId === String(collectorNum) ||
+        r.localId === String(collectorNum).padStart(3, '0')
+      );
+      if (match) return match.id;
+    }
+  } catch (err) {
+    if (debugCount < 3) console.error(`  [debug] name-only error: ${err.message}`);
+  }
+  await sleep(150);
+
   return null;
 }
 
