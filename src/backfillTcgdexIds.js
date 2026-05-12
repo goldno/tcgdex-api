@@ -24,7 +24,7 @@ async function lookup(cleanName, collectorNum) {
       );
       if (results && results.length > 0) return results[0].id;
     } catch (err) {
-      if (debugCount < 3) console.error(`  [debug] name+localId error: ${err.message}`);
+      if (debugCount < 10) console.error(`  [debug] name+localId error: ${err.message}`);
     }
     await sleep(150);
   }
@@ -34,7 +34,7 @@ async function lookup(cleanName, collectorNum) {
     const results = await tcgdex.card.list(
       Query.create().contains('name', cleanName)
     );
-    if (debugCount < 3) {
+    if (debugCount < 10) {
       console.log(`  [debug] name-only for "${cleanName}" (#${collectorNum}): ${results?.length ?? 0} results`);
       debugCount++;
     }
@@ -46,7 +46,7 @@ async function lookup(cleanName, collectorNum) {
       if (match) return match.id;
     }
   } catch (err) {
-    if (debugCount < 3) console.error(`  [debug] name-only error: ${err.message}`);
+    if (debugCount < 10) console.error(`  [debug] name-only error: ${err.message}`);
   }
   await sleep(150);
 
@@ -66,7 +66,10 @@ async function backfillTcgdexIds() {
   let updated = 0, notFound = 0;
 
   for (const card of rows) {
-    const cleanName = card.name.replace(/-\s*\d+\/\d+\s*$/, '').trim();
+    const cleanName = card.name
+      .replace(/-\s*\d+\/\d+\s*$/, '')  // strip "- X/Y" suffix
+      .replace(/\s*\(.*?\)\s*$/, '')     // strip trailing "(Full Art)", etc.
+      .trim();
     const tcgdexId  = await lookup(cleanName, card.collector_number);
 
     if (tcgdexId) {
