@@ -67,6 +67,31 @@ async function syncPrices() {
   }
 
   console.log(`[priceSync] Done — ${saved} new snapshots, ${skipped} already existed.`);
+  await sendNotification(today, saved, skipped);
+}
+
+async function sendNotification(date, saved, skipped) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'TCGDex API <onboarding@resend.dev>',
+        to: ['goldno@hotmail.com'],
+        subject: `Price sync complete — ${date}`,
+        html: `<p><strong>${date}</strong> sync finished.</p>
+               <p>${saved} new snapshots saved, ${skipped} already existed.</p>`,
+      }),
+    });
+  } catch (err) {
+    console.error('[priceSync] Email notification failed:', err.message);
+  }
 }
 
 // Allow running directly for testing: node src/priceSync.js
