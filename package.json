@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "sync-cards": "node src/syncCards.js",
-    "backfill": "node src/backfillPrices.js"
+    "backfill": "node src/backfillPrices.js",
+    "compute-metrics": "node src/computeMetrics.js"
   },
   "engines": {
     "node": ">=22"
