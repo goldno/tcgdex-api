@@ -94,7 +94,7 @@ router.get('/support-lines', async (req, res) => {
         m.tier_label, m.tier_band, m.floor_median, m.floor_weeks,
         m.breakout_price, m.in_band, m.is_deep_value, m.sparkline, m.computed_at
       FROM card_metrics m
-      JOIN tracked_cards c USING (product_id)
+      JOIN tracked_cards c ON c.product_id::text = m.product_id
       WHERE m.qualifies_support = true
       ORDER BY m.is_deep_value DESC, m.drawdown_pct DESC
     `);
@@ -140,7 +140,7 @@ router.get('/momentum', async (req, res) => {
         m.current_price, m.price_30d_ago, m.momentum_30d,
         m.sparkline, m.computed_at
       FROM card_metrics m
-      JOIN tracked_cards c USING (product_id)
+      JOIN tracked_cards c ON c.product_id::text = m.product_id
       WHERE m.momentum_30d IS NOT NULL AND ABS(m.momentum_30d) >= 3
       ORDER BY m.momentum_30d DESC
     `);
